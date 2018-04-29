@@ -1,0 +1,132 @@
+{
+  package table
+
+  import (
+    "time"
+    "github.com/satori/go.uuid"
+  )
+
+  // NOTE: remember to update the Equals if fields change
+  type SMS struct {
+    UUID     uuid.UUID `json:"uuid"`
+    Id       int       `json:"id"`
+    Received time.Time `json:"received"`
+    From     string    `json:"from"`
+    Size     int       `json:"size"`
+    Text     string    `json:"text"`
+  }
+
+  func linesToString(line interface{}, lines interface{}) string {
+    var text string
+    switch first := line.(type) {
+    case string:
+      text = first
+    case []interface{}:
+      text = first[0].(string)
+    }
+    switch extras := lines.(type) {
+    case []interface{}:
+      for _, extra := range extras {
+        switch other := extra.(type) {
+        case string:
+          text += "\n" + other
+        case []interface{}:
+          text += "\n" + other[0].(string)
+        }
+      }
+    }
+    return text
+  }
+}
+
+
+
+Table <- __ result:(SMS / Line)+ __ EOF {
+  sections := result.([]interface{})
+  smses := make([]SMS, 0, len(sections))
+  for _, section := range sections {
+    switch sms := section.(type) {
+    case SMS:
+      smses = append(smses, sms)
+    }
+  }
+  if len(smses) < 1 {
+    return nil, errors.New("no sms found")
+  }
+  return smses, nil
+}
+
+SMS <- id:ID received:Received from:From size:Size line:Line lines:NonSeparatorLine* SeparatorLine {
+  return SMS{
+    Id: id.(int),
+    Received: received.(time.Time),
+    From: from.(string),
+    Size: size.(int),
+    Text: linesToString(line, lines),
+  }, nil
+}
+
+ID <- "SMS ID"i _ ':' _ id:Integer _ NL {
+  return id, nil
+}
+
+Received <- "TIME"i _ ':' _ received:DateTime _ NL {
+  return received, nil
+}
+
+From <- "FROM"i _ ':' _ from:PhoneNumber _ NL {
+  return from, nil
+}
+
+Size <- "SIZE"i _ ':' _ size:Integer _ NL {
+  return size, nil
+}
+
+Line <- line:(NonSeparatorLine / SeparatorLine) {
+  return line, nil
+}
+
+NonSeparatorLine <- line:LineString NL &{
+  str := line.(string)
+  if len(str) < 1 {
+    return true, nil
+  }
+  for _, r := range str {
+    if r != '-' {
+      return true, nil
+    }
+  }
+  return false, nil
+}
+
+LineString <- [^\n]* {
+  return string(c.text), nil
+}
+
+SeparatorLine <- '-'+ NL? {
+  return string(c.text), nil
+}
+
+Integer <- DecimalDigit+ {
+  return strconv.Atoi(string(c.text))
+}
+
+DateTime <- Date _ Time {
+  return time.Parse("06-01-02 15:04:05", string(c.text))
+}
+
+Date <- Integer '-' Integer '-' Integer
+
+Time <- Integer ':' Integer ':' Integer
+
+PhoneNumber <- '+'? DecimalDigit+ {
+  return string(c.text), nil
+}
+
+
+
+DecimalDigit <- [0-9]
+_ "WS" <- [ \t\r]*
+__ "WSNL" <- [ \n\t\r]*
+NL <- '\n'
+EOF <- !.

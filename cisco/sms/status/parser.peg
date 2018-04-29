@@ -1,0 +1,142 @@
+{
+  package status
+
+  type tuple struct {
+    field string
+    value interface{}
+  }
+
+  type Status struct {
+    Allocated  int
+    Stored     int
+    Used       int
+    Deleted    int
+    Sent       int
+    Pending    int
+    Failed     int
+    LastStatus string
+  }
+}
+
+
+Status <- __ infos:( IncomingInfo / OutgoingInfo / UnhandledInfo / EmptyLine )+ .* EOF {
+  status := Status{}
+  for _, datas := range infos.([]interface{}) {
+    if datas != nil {
+      for _, data := range datas.([]interface{}) {
+        switch tup := data.(type) {
+        case tuple:
+          switch tup.field {
+            case "allocated":
+              status.Allocated = tup.value.(int)
+            case "stored":
+              status.Stored = tup.value.(int)
+            case "used":
+              status.Used = tup.value.(int)
+            case "deleted":
+              status.Deleted = tup.value.(int)
+            case "sent":
+              status.Sent = tup.value.(int)
+            case "pending":
+              status.Pending = tup.value.(int)
+            case "failed":
+              status.Failed = tup.value.(int)
+            case "laststatus":
+              status.LastStatus = tup.value.(string)
+          }
+        }
+      }
+    }
+  }
+  return status, nil
+}
+
+
+
+IncomingInfo <-
+  _ "Incoming"i _ "Message"i _ "Information"i _ NL
+  SeparatorLine
+  data:( Stored / Deleted / Allocated / Used / AnyLine )*
+  EmptyLine
+  { return data, nil }
+
+Stored <- _ "SMS"i _ "stored"i _ "in"i _ "modem"i _ '=' _ stored:Integer NL {
+  return tuple{ field: "stored", value: stored.(int) }, nil
+}
+Deleted <- _ "Total"i _ "SMS"i _ "deleted"i _ "since"i _ "booting"i _ "up"i _ '=' _ deleted:Integer NL {
+  return tuple{ field: "deleted", value: deleted.(int) }, nil
+}
+Allocated <- _ "Storage"i _ "records"i _ "allocated"i _ '=' _ allocated:Integer NL {
+  return tuple{ field: "allocated", value: allocated.(int) }, nil
+}
+Used <- _ "Storage"i _ "records"i _ "used"i _ '=' _ used:Integer NL {
+  return tuple{ field: "used", value: used.(int) }, nil
+}
+
+
+
+OutgoingInfo <-
+  _ "Outgoing"i _ "Message"i _ "Information"i _ NL
+  SeparatorLine
+  data:( Sent / Pending / Failed / LastStatus / AnyLine )*
+  EmptyLine
+  { return data, nil }
+
+Sent <- _ "Total"i _ "SMS"i _ "sent"i _ "successfully"i _ '=' _ sent:Integer NL {
+  return tuple{ field: "sent", value: sent.(int) }, nil
+}
+Pending <- _ "Number"i _ "of"i _ "outgoing"i _ "SMS"i _ "pending"i _ '=' _ pending:Integer NL {
+  return tuple{ field: "pending", value: pending.(int) }, nil
+}
+Failed <- _ "Total"i _ "SMS"i _ "send"i _ "failure"i _ '=' _ failed:Integer NL {
+  return tuple{ field: "failed", value: failed.(int) }, nil
+}
+LastStatus <- _ "Last"i _ "Outgoing"i _ "SMS"i _ "Status"i _ '=' _ status:LineString NL {
+  return tuple{ field: "laststatus", value: status.(string) }, nil
+}
+
+
+
+UnhandledInfo <- AnyLine SeparatorLine? AnyLine* EmptyLine {
+  return nil, nil
+}
+
+SeparatorLine <- ('='+ / '-'+) NL {
+  return nil, nil
+}
+
+EmptyLine <- _ NL {
+  return nil, nil
+}
+
+AnyLine <- NonEmptyLine {
+  return nil, nil
+}
+
+NonEmptyLine <- str:LineString NL &{
+  for _, r := range str.(string) {
+    if !unicode.IsSpace(r) {
+      return true, nil
+    }
+  }
+  return false, nil
+}
+
+LineString <- [^\n]* {
+  return string(c.text), nil
+}
+
+
+
+Integer <- '-'? DecimalDigit+ {
+  n, err := strconv.ParseInt(string(c.text), 10, 0)
+  return int(n), err
+}
+
+
+
+DecimalDigit <- [0-9]
+__ "WSNL" <- [ \n\t\r]*
+_ "WS" <- [ \t\r]*
+NL <- '\n'
+EOF <- !.

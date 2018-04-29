@@ -1,0 +1,180 @@
+{
+  package status
+
+  import "unicode"
+  import "time"
+
+  type tuple struct {
+    field string
+    value interface{}
+  }
+
+  type Status struct {
+    Network       string
+    NetworkNumber string
+    Modem         string
+    Temperature   int
+    SystemTime    time.Time
+    Service       string
+    PowerMode     string
+    RSSI          float32
+    SNR           float32
+    Cells         int
+    Technology    string
+  }
+}
+
+
+
+Status <- __ infos:( HardwareInfo / NetworkInfo / RadioInfo / UnhandledInfo / EmptyLine )+ .* EOF {
+  status := Status{}
+  for _, datas := range infos.([]interface{}) {
+    if datas != nil {
+      for _, data := range datas.([]interface{}) {
+        switch tup := data.(type) {
+        case tuple:
+          switch tup.field {
+            case "network":
+              status.Network = tup.value.(string)
+            case "networknumber":
+              status.NetworkNumber = tup.value.(string)
+            case "modem":
+              status.Modem = tup.value.(string)
+            case "temperature":
+              status.Temperature = tup.value.(int)
+            case "systemtime":
+              status.SystemTime = tup.value.(time.Time)
+            case "service":
+              status.Service = tup.value.(string)
+            case "powermode":
+              status.PowerMode = tup.value.(string)
+            case "rssi":
+              status.RSSI = tup.value.(float32)
+            case "snr":
+              status.SNR = tup.value.(float32)
+            case "cells":
+              status.Cells = tup.value.(int)
+            case "technology":
+              status.Technology = tup.value.(string)
+          }
+        }
+      }
+    }
+  }
+  return status, nil
+}
+
+HardwareInfo <-
+  _ "Hardware"i _ "Information"i _ NL
+  SeparatorLine
+  data:( NetworkNumber / ModemStatus / Temperature / AnyLine )*
+  EmptyLine
+  { return data, nil }
+
+NetworkNumber <- _ "Digital"i _ "Network-Number"i _ "(MSISDN)"i _ '=' _ number:LineString NL {
+  return tuple{ field: "networknumber", value: number.(string) }, nil
+}
+ModemStatus <- _ "Modem"i _ "Status"i _ '=' _ status:LineString NL {
+  return tuple{ field: "modem", value: status.(string) }, nil
+}
+Temperature <- _ "Current"i _ "Modem"i _ "Temperature"i _ '=' _ temp:Integer _ "deg"i _ "C"i NL {
+  return tuple{ field: "temperature", value: temp.(int) }, nil
+}
+
+
+NetworkInfo <-
+  _ "Network"i _ "Information"i _ NL
+  SeparatorLine
+  data:( CurrentTime / CurrentStatus / Network / AnyLine )*
+  EmptyLine
+  { return data, nil }
+
+CurrentTime <- _ "Current"i _ "System"i _ "Time"i _ '=' _ dt:LineString NL {
+  dt, err := time.Parse("Mon Jan 2 15:4:5 2006", dt.(string))
+  if err != nil {
+    return nil, nil
+  } else {
+    return tuple{ field: "systemtime", value: dt }, nil
+  }
+}
+CurrentStatus <- _ "Current"i _ "Service"i _ "Status"i _ '=' _ status:LineString NL {
+  return tuple{ field: "service", value: status.(string) }, nil
+}
+Network <- _ "Network"i _ '=' _  network:LineString NL {
+  return tuple{ field: "network", value: network.(string) }, nil
+}
+
+
+RadioInfo <-
+  _ "Radio"i _ "Information"i _ NL
+  SeparatorLine
+  data:( RadioPowerMode / CurrentRSSI / CurrentSNR / CurrentSNR / NearbyCells / RatSelected / AnyLine )*
+  EmptyLine
+  { return data, nil }
+
+RadioPowerMode <- _ "Radio"i _ "power"i _ "mode"i _ '=' _ mode:LineString NL {
+  return tuple{ field: "powermode", value: mode.(string) }, nil
+}
+CurrentRSSI <- _ "Current"i _ "RSSI"i _ '=' _ rssi:Float _ AnyLine {
+  return tuple{ field: "rssi", value: rssi.(float32) }, nil
+}
+CurrentSNR <- _ "Current"i _ "SNR"i _ '=' _ snr:Float _ AnyLine {
+  return tuple{ field: "snr", value: snr.(float32) }, nil
+}
+NearbyCells <- _ "Number"i _ "of"i _ "nearby"i _ "cells"i _ '=' _ cells:Integer NL {
+  return tuple{ field: "cells", value: cells.(int) }, nil
+}
+RatSelected <- _ "Radio"i _ "Access"i _ "Technology"i _ "(RAT)"i _ "Selected"i _ '=' _ radio:LineString NL {
+  return tuple{ field: "technology", value: radio.(string) }, nil
+}
+
+
+
+UnhandledInfo <- AnyLine SeparatorLine? AnyLine* EmptyLine {
+  return nil, nil
+}
+
+SeparatorLine <- ('='+ / '-'+) NL {
+  return nil, nil
+}
+
+EmptyLine <- _ NL {
+  return nil, nil
+}
+
+AnyLine <- NonEmptyLine {
+  return nil, nil
+}
+
+NonEmptyLine <- str:LineString NL &{
+  for _, r := range str.(string) {
+    if !unicode.IsSpace(r) {
+      return true, nil
+    }
+  }
+  return false, nil
+}
+
+LineString <- [^\n]* {
+  return string(c.text), nil
+}
+
+
+
+Float <- Integer ('.' DecimalDigit+)? {
+  f, err := strconv.ParseFloat(string(c.text), 32)
+  return float32(f), err
+}
+
+Integer <- '-'? DecimalDigit+ {
+  n, err := strconv.ParseInt(string(c.text), 10, 0)
+  return int(n), err
+}
+
+
+
+DecimalDigit <- [0-9]
+__ "WSNL" <- [ \n\t\r]*
+_ "WS" <- [ \t\r]*
+NL <- '\n'
+EOF <- !.
