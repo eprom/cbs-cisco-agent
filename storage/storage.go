@@ -1,16 +1,22 @@
 package storage
 
 import (
+	"errors"
 	"github.com/jakhog/cbs-cisco-agent/cisco/sms"
+	"github.com/jakhog/cbs-cisco-agent/log"
 	"github.com/satori/go.uuid"
 )
 
 type Storage struct {
-	Incoming []sms.IncomingSMS `json="incoming"`
-	Outgoing []sms.OutgoingSMS `json="outgoing"`
+	Incoming []sms.IncomingSMS `json:"incoming"`
+	Outgoing []sms.OutgoingSMS `json:"outgoing"`
 }
 
-func StoreIncomingSMS(smses []sms.IncomingSMS) []int {
+func StoreIncomingSMS(smses []sms.IncomingSMS, logger *log.Logger) []int {
+	if inMemoryStorage == nil {
+		// We can't do anything if the storage isn't ready
+		panic(errors.New("storage not ready"))
+	}
 	storageLock.Lock()
 	defer storageLock.Unlock()
 
@@ -40,6 +46,8 @@ func StoreIncomingSMS(smses []sms.IncomingSMS) []int {
 			}
 			message.UUID = newUUID
 			inMemoryStorage.Incoming = append(inMemoryStorage.Incoming, message)
+			logger.Infof("new SMS stored from %v (received %v)", message.From, message.Received)
+			inMemoryStorageDirty = true
 		}
 		// Check to see if the SMS has been persisted, so that it can be deleted
 		for _, persisted := range persistedStorage.Incoming {

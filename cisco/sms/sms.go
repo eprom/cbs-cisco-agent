@@ -16,10 +16,10 @@ const ( // NOTE to self, don't change these numbers
 )
 
 type OutgoingSMS struct {
-	UUID   uuid.UUID         `json="uuid"`
-	To     string            `json="to"`
-	Text   string            `json="text"`
-	Status OutgoingSMSStatus `json="status"`
+	UUID   uuid.UUID         `json:"uuid"`
+	To     string            `json:"to"`
+	Text   string            `json:"text"`
+	Status OutgoingSMSStatus `json:"status"`
 }
 
 type IncomingSMS = table.SMS

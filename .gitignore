@@ -15,3 +15,4 @@
 
 agent.log
 package_config.ini
+storage*.json*

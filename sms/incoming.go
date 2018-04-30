@@ -38,7 +38,11 @@ func (t *IncomingTask) Run(logger *log.Logger) {
 			panic(err)
 		}
 		// Store all these messages
-		storage.StoreIncomingSMS(smses) // TODO: Delete the ones persisted
+		toDelete := storage.StoreIncomingSMS(smses, logger) // TODO: Delete the ones persisted
+		for _, id := range toDelete {
+			logger.Infof("SMS with ID %v is ready to be deleted", id)
+		}
+
 		// Save updated stats
 		t.allocated = status.Allocated
 		t.used = status.Used
